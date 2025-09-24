@@ -1,1 +1,67 @@
+Docker Compose version
+version: '3.8'
+
+Define all the services (containers) that make up our application
+services:
+
+The Backend Service (FastAPI)
+backend:
+# Build the Docker image from the Dockerfile in the './backend' directory
+build: ./backend
+# Map port 8000 on the host machine to port 8000 in the container
+# This allows us to access the API at http://localhost:8000
+ports:
+- "8000:8000"
+# Mount the local './backend/app' directory into the container at '/code/app'
+# This enables hot-reloading: changes in your local code will reflect in the container instantly
+volumes:
+- ./backend/app:/code/app
+# Pass environment variables to the container (optional but good practice)
+environment:
+- MODEL_PATH=Pathfinder9362/Student-Mind-Mate-AI-v2
+
+The Frontend Service (React)
+frontend:
+# Build the Docker image from the Dockerfile in the './frontend' directory
+build: ./frontend
+# Map port 5173 on the host machine to port 80 in the container
+# The React dev server runs on 5173, and the Nginx server inside the container serves on port 80
+ports:
+- "5173:80"
+# Mount the local './frontend/src' directory for hot-reloading
+volumes:
+- ./frontend/src:/app/src
+# This service should only start after the 'backend' service is ready
+depends_on:
+- backend
+
+Note: In a production setup with vLLM, you would add another service here:
+vllm_server:
+image: vllm/vllm-openai:latest
+... (GPU configurations, model loading commands) ...
+And the 'backend' would have depends_on: - vllm_server
+
+---
+
+### **คำอธิบายแต่ละส่วน (แบบเข้าใจง่าย)**
+
+* **`services:`**: คือรายชื่อ "นักดนตรี" ในวงออเคสตราของเรา ซึ่งตอนนี้มี 2 คนคือ `backend` และ `frontend`
+
+* **ส่วนของ `backend:`**:
+    * **`build: ./backend`**: บอกให้ Docker Compose ไปที่โฟลเดอร์ `backend/` แล้วสร้าง "กล่อง" Docker ตามพิมพ์เขียว (`Dockerfile`) ที่อยู่ในนั้น
+    * **`ports: - "8000:8000"`**: เหมือนการทำ "สายตรง" ครับ คือเชื่อมต่อเบอร์โทรศัพท์ `8000` จากโลกภายนอก (เครื่องของคุณ) เข้าไปยังเบอร์ `8000` ที่ Backend ของเราเปิดรอรับสายอยู่ในกล่อง Docker
+    * **`volumes: - ./backend/app:/code/app`**: นี่คือ "เวทมนตร์" สำหรับการพัฒนาครับ มันคือการ "เชื่อม" โฟลเดอร์โค้ดในเครื่องของคุณเข้ากับโฟลเดอร์ในกล่อง Docker ทำให้เมื่อคุณแก้ไขโค้ดใน `main.py` การเปลี่ยนแปลงจะไปปรากฏในกล่องทันทีโดยไม่ต้องสร้างใหม่ทุกครั้ง
+
+* **ส่วนของ `frontend:`**:
+    * ทำงานเหมือนกับ Backend เลยครับ แต่จะไปสร้างกล่องจากโฟลเดอร์ `frontend/`
+    * **`ports: - "5173:80"`**: เชื่อมต่อเบอร์ `5173` (พอร์ตมาตรฐานของ React ตอนพัฒนา) จากภายนอก เข้าไปยังเบอร์ `80` ที่เซิร์ฟเวอร์ Nginx ในกล่องเปิดรออยู่
+    * **`depends_on: - backend`**: นี่คือคำสั่งที่สำคัญมากครับ มันบอกว่า **"นักดนตรี Frontend อย่าเพิ่งเริ่มเล่นนะ รอให้ Backend ตั้งเครื่องเสียงเสร็จก่อน!"** ซึ่งจะช่วยป้องกัน Error ที่ Frontend พยายามจะเรียก API แต่ Backend ยังไม่พร้อมทำงานครับ
+
+### **วิธีใช้งาน**
+
+1.  **สร้างไฟล์:** สร้างไฟล์ชื่อ `docker-compose.yml` ใน Directory หลักของโปรเจกต์ (`student-mind-mate-ai/`)
+2.  **คัดลอกโค้ด:** นำโค้ดข้างบนไปวางในไฟล์นั้น
+3.  **รันคำสั่งเดียวจบ:** เปิด Terminal ขึ้นมาที่ Directory หลัก แล้วรันคำสั่ง:
+    ```bash
+    docker-compose up --build
 
