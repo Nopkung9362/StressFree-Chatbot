@@ -1,101 +1,90 @@
-from fastapi import FastAPI, HTTPException
-from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
 import os
 
 from app.models.chat import ChatRequest, ChatResponse
-from app.services.fact_checker import run_fact_checking_pipeline, model_instance
+from app.services import fact_checker
 
-# --- Configuration ---
-MODEL_PATH = "Pathfinder9362/Student-Mind-Mate-AI-v2"
-OFFLOAD_DIR = "./offload_main"
-os.makedirs(OFFLOAD_DIR, exist_ok=True)
+# Create the FastAPI app instance
+app = FastAPI(
+    title="Student Mind Mate AI API",
+    description="API for the AI-powered mental health support chatbot.",
+    version="1.0.0"
+)
 
-def _load_model():
+# --- THE FIX for 404/Fetch Error ---
+# Add CORS middleware to allow the frontend to communicate with this backend.
+# This is a critical security feature in web applications.
+
+# Define the list of origins that are allowed to make requests.
+# In development, this is our React app's address.
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000", # Often used by create-react-app
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # Allow specific origins
+    allow_credentials=True,      # Allow cookies (if needed in the future)
+    allow_methods=["*"],         # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],         # Allow all headers
+)
+# ------------------------------------
+
+@app.on_event("startup")
+def load_model():
     """
-    Loads the PEFT model using 4-bit quantization.
-    This function is called once at startup.
+    This function runs when the server starts.
+    It loads the large AI model into memory only once.
     """
-    print(f"Loading model from: {MODEL_PATH}...")
-    try:
-        config = PeftConfig.from_pretrained(MODEL_PATH)
-        base_model_name = config.base_model_name_or_path
-        
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            llm_int8_enable_fp32_cpu_offload=True
-        )
+    peft_model_id = os.getenv("MODEL_PATH", "Pathfinder9362/Student-Mind-Mate-AI-v2")
+    print(f"Loading model from: {peft_model_id}")
 
-        base_model = AutoModelForCausalLM.from_pretrained(
-            base_model_name,
-            quantization_config=bnb_config,
-            device_map="auto",
-            trust_remote_code=True,
-            offload_folder=OFFLOAD_DIR,
-            low_cpu_mem_usage=True
-        )
-        tokenizer = AutoTokenizer.from_pretrained(base_model_name)
-        tokenizer.pad_token = tokenizer.eos_token
+    config = PeftConfig.from_pretrained(peft_model_id)
+    base_model_name = config.base_model_name_or_path
 
-        model = PeftModel.from_pretrained(base_model, MODEL_PATH)
-        
-        # Store the loaded model and tokenizer in the global placeholder
-        model_instance["model"] = model
-        model_instance["tokenizer"] = tokenizer
-        
-        print("Model loaded successfully!")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        # In a real app, you might want to handle this more gracefully
-        raise RuntimeError(f"Could not load model: {e}")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        llm_int8_enable_fp32_cpu_offload=True
+    )
+    
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        quantization_config=bnb_config,
+        device_map="auto",
+        trust_remote_code=True,
+        low_cpu_mem_usage=True
+    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    tokenizer.pad_token = tokenizer.eos_token
 
+    model = PeftModel.from_pretrained(base_model, peft_model_id)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # This code runs on startup
-    _load_model()
-    yield
-    # This code runs on shutdown (optional)
-    print("Shutting down...")
-    model_instance["model"] = None
-    model_instance["tokenizer"] = None
-
-
-app = FastAPI(lifespan=lifespan)
-
-@app.get("/")
-def read_root():
-    return {"status": "Student's Mind Mate AI Backend is running!"}
+    # Store the loaded model and tokenizer in the service's global placeholder
+    fact_checker.model_instance["model"] = model
+    fact_checker.model_instance["tokenizer"] = tokenizer
+    print("Model loaded successfully!")
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_with_bot(request: ChatRequest):
+def handle_chat_request(request: ChatRequest):
     """
-    Main chat endpoint that receives user prompts and returns a fact-checked answer.
+    This is the main endpoint that receives user messages.
+    It uses the fact-checking pipeline to generate a safe response.
     """
-    if not model_instance["model"] or not model_instance["tokenizer"]:
-        raise HTTPException(status_code=503, detail="Model is not available or still loading.")
+    print(f"Received prompt: {request.prompt}")
     
-    if not request.user_prompt:
-        raise HTTPException(status_code=400, detail="User prompt cannot be empty.")
-        
-    try:
-        # In a real-world scenario with vLLM, this would be an API call:
-        # result = await call_vllm_service(request.user_prompt)
-        
-        # For now, we call our local pipeline directly
-        result = run_fact_checking_pipeline(request.user_prompt)
-        
-        return ChatResponse(
-            final_answer=result["final_answer"],
-            fact_check_passed=result["fact_check_passed"],
-            explanation=result["explanation"]
-        )
-    except Exception as e:
-        print(f"An error occurred during chat processing: {e}")
-        raise HTTPException(status_code=500, detail="An internal error occurred while processing the request.")
-
+    # Run the full pipeline from the service
+    result = fact_checker.run_fact_checking_pipeline(request.prompt)
+    
+    return ChatResponse(
+        answer=result["final_answer"],
+        fact_check_passed=result["fact_check_passed"],
+        explanation=result["explanation"]
+    )
