@@ -19,7 +19,7 @@ COPY . .
 # Build the React application for production.
 # This creates a 'dist' folder with optimized static files (HTML, CSS, JS).
 RUN npm run build
-
+# CMD ["sleep", "600"] 
 # --- Stage 2: The Production Server ---
 # Use a lightweight Nginx image as the base for our production environment.
 # 'alpine' versions are very small and secure.
