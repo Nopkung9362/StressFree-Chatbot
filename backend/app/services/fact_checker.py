@@ -10,7 +10,7 @@ model_instance = {
     "tokenizer": None
 }
 
-def get_initial_answer(prompt: str) -> str:
+def get_initial_answer(prompt, model, tokenizer, max_tokens=256):
     """
     Generates the initial, creative answer from the model.
     """
@@ -32,17 +32,14 @@ def get_initial_answer(prompt: str) -> str:
     input_len = inputs["input_ids"].shape[1]
     
     outputs = model.generate(
-        **inputs, 
-        max_new_tokens=150, 
-        temperature=0.7, 
-        do_sample=True, 
+        **inputs, max_new_tokens=max_tokens, temperature=0.7, do_sample=True,
         pad_token_id=tokenizer.eos_token_id
     )
     
     new_tokens = outputs[0, input_len:]
     return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
-def get_fact_check_verdict(original_prompt: str, candidate_answer: str) -> dict:
+def get_fact_check_verdict(prompt, answer, model, tokenizer, max_tokens=150):
     """
     Uses the same LLM to perform a fact-check on the candidate answer.
     """
@@ -68,10 +65,7 @@ def get_fact_check_verdict(original_prompt: str, candidate_answer: str) -> dict:
     input_len = inputs["input_ids"].shape[1]
     
     outputs = model.generate(
-        **inputs, 
-        max_new_tokens=100, 
-        temperature=0.1, 
-        do_sample=False, 
+        **inputs, max_new_tokens=max_tokens, temperature=0.1, do_sample=False,
         pad_token_id=tokenizer.eos_token_id
     )
     
