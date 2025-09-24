@@ -16,9 +16,16 @@ services:
     # This enables hot-reloading: changes in your local code will reflect in the container instantly
     volumes:
       - ./backend/app:/code/app
-    # Pass environment variables to the container (optional but good practice)
+    
+    env_file:
+      - .env
+    # ส่ง Token ที่อ่านได้เข้าไปใน Container
     environment:
-      - MODEL_PATH=Pathfinder9_62/Student-Mind-Mate-AI-v2
+      - MODEL_PATH=Pathfinder9362/Student-Mind-Mate-AI-v2
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_TOKEN}
+      - VLLM_LOGGING_LEVEL=DEBUG
+    
+
 
   # The Frontend Service (React)
   frontend:
@@ -35,8 +42,17 @@ services:
     depends_on:
       - backend
 
-  # Note: In a production setup with vLLM, you would add another service here:
+# Note: In a production setup with vLLM, you would add another service here:
   vllm_server:
     image: vllm/vllm-openai:latest
-    # ... (GPU configurations, model loading commands) ...
-    # And the 'backend' would have depends_on: - vllm_server
+    environment:
+      - VLLM_LOGGING_LEVEL=DEBUG
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  # ... (GPU configurations, model loading commands) ...
+  # And the 'backend' would have depends_on: - vllm_server
