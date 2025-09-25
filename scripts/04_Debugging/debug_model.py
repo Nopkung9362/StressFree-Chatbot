@@ -52,7 +52,8 @@ def load_peft_model(peft_model_id):
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
-            llm_int8_enable_fp32_cpu_offload=True
+            llm_int8_enable_fp32_cpu_offload=True,
+            bnb_4bit_use_double_quant=True
         )
 
         print("🔄 Loading Base Model in 4-bit...")
