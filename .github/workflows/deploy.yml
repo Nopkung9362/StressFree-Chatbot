@@ -1,0 +1,44 @@
+# ชื่อของ Workflow นี้
+name: Deploy to Cloud Server
+
+# "ตัวกระตุ้น": Workflow นี้จะเริ่มทำงานเมื่อไหร่?
+# ในที่นี้คือ: ทุกครั้งที่มีการ push โค้ดขึ้นไปที่ branch 'main'
+on:
+  push:
+    branches: [ main ]
+
+# "งาน" ที่ต้องทำ
+jobs:
+  deploy:
+    # "สถานที่ทำงาน": หุ่นยนต์จะทำงานบนระบบ Ubuntu เวอร์ชันล่าสุด
+    runs-on: ubuntu-latest
+
+    # "ขั้นตอน" การทำงาน (เรียงตามลำดับ)
+    steps:
+    # 1. เช็คเอาท์โค้ด: ดาวน์โหลดโค้ดเวอร์ชันล่าสุดจาก Repository ของเรามาเตรียมไว้
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2. เชื่อมต่อไปยัง Server: นี่คือขั้นตอนที่สำคัญที่สุด
+    #    มันจะใช้ "กุญแจลับ" ที่เราเก็บไว้ใน Secrets เพื่อ SSH เข้าไปยัง Cloud Server ของเรา
+    - name: SSH into Server and Deploy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}             # IP Address ของ Server
+        username: ${{ secrets.USERNAME }}     # ชื่อผู้ใช้ (ส่วนใหญ่คือ root)
+        key: ${{ secrets.SSH_PRIVATE_KEY }} # กุญแจส่วนตัวสำหรับ Login
+        port: ${{ secrets.PORT }}             # Port สำหรับ SSH (ส่วนใหญ่คือ 22)
+        script: |
+          # เมื่อเข้ามาใน Server ได้แล้ว ให้รันคำสั่งเหล่านี้:
+          
+          # เข้าไปยัง Directory ของโปรเจกต์
+          cd ~/StressFree-Chatbot
+          
+          # ดึงโค้ดเวอร์ชันล่าสุดจาก GitHub
+          git pull origin main
+          
+          # หยุดและลบ Container เก่า (ถ้ามี)
+          docker-compose down
+          
+          # สร้างและรัน Container ใหม่ทั้งหมดด้วยโค้ดล่าสุด
+          docker-compose up --build -d
